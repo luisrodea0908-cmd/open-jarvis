@@ -3,31 +3,52 @@ name: Compilar Open Jarvis APK
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # Permite compilar con 1 botÃ³n desde el mÃ³vil
+  workflow_dispatch: # Permite compilar con 1 botón desde el móvil
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar CÃ³digo Fuente
+      - name: 1. Descargar Código Fuente
         uses: actions/checkout@v4
 
-      - name: Configurar Java JDK 17
+      - name: 2. Configurar Java JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
           cache: 'gradle'
 
-      - name: Dar permisos de ejecuciÃ³n a Gradle
-        run: chmod +x gradlew
+      - name: 3. Configurar Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Compilar APK Debug
-        run: ./gradlew assembleDebug --stacktrace
+      - name: 4. Localizar Proyecto y Permisos de Gradle (Auto-Fix)
+        run: |
+          echo "=== Buscando carpeta del proyecto ==="
+          # Busca dónde está build.gradle o gradlew (por si está en una subcarpeta como open-jarvis-main)
+          PROJECT_DIR=$(find . -maxdepth 3 -name "settings.gradle*" -o -name "build.gradle*" | head -n 1 | xargs -r dirname)
+          if [ -z "$PROJECT_DIR" ]; then
+            PROJECT_DIR="."
+          fi
+          echo "Carpeta detectada: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
-      - name: Subir APK generado
+          cd "$PROJECT_DIR"
+          # Si no existe gradlew, se crea automáticamente
+          if [ ! -f "gradlew" ]; then
+            echo "gradlew no encontrado en la raíz. Generando Gradle Wrapper..."
+            gradle wrapper --gradle-version 8.2
+          fi
+          chmod +x gradlew || true
+
+      - name: 5. Compilar APK (assembleDebug)
+        run: |
+          cd "$PROJECT_DIR"
+          ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: 6. Subir APK generado a Descargas
         uses: actions/upload-artifact@v4
         with:
           name: open-jarvis-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: "**/build/outputs/apk/debug/*.apk"
           retention-days: 14
